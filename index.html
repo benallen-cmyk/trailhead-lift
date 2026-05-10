@@ -309,6 +309,30 @@
     background: var(--text-muted); border-radius: 50%; transition: all 0.25s;
   }
   .toggle-switch input:checked ~ .toggle-thumb { left: 23px; background: var(--off-white); }
+
+  /* GOAL SELECTION */
+  .goal-screen { display:flex; flex-direction:column; align-items:center; min-height:calc(100vh - 64px); padding:32px 20px 80px; }
+  .goal-screen-title { font-family:"Bebas Neue",sans-serif; font-size:28px; letter-spacing:4px; color:var(--off-white); margin-bottom:6px; }
+  .goal-screen-sub { font-family:"Lora",serif; font-style:italic; font-size:13px; color:var(--muted); margin-bottom:32px; text-align:center; }
+  .goal-cards { display:flex; flex-direction:column; gap:12px; width:100%; max-width:400px; }
+  .goal-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; cursor:pointer; transition:all 0.25s; position:relative; overflow:hidden; text-align:left; width:100%; }
+  .goal-card::before { content:""; position:absolute; left:0;top:0;bottom:0; width:3px; opacity:0; transition:opacity 0.2s; }
+  .goal-card:hover { transform:translateX(3px); }
+  .goal-card:hover::before { opacity:1; }
+  .goal-card.selected { transform:translateX(3px); }
+  .goal-card.selected::before { opacity:1; }
+  .goal-card-top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .goal-card-name { font-family:"Bebas Neue",sans-serif; font-size:22px; letter-spacing:3px; line-height:1; }
+  .goal-card-sub { font-size:12px; color:var(--muted); margin-top:4px; }
+  .goal-card-meta { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .goal-meta-chip { font-family:"JetBrains Mono",monospace; font-size:9px; color:var(--off-white); background:var(--surface3); border:1px solid var(--border); border-radius:4px; padding:4px 10px; letter-spacing:.5px; }
+  .goal-check { font-size:18px; opacity:0; transition:opacity 0.2s; }
+  .goal-card.selected .goal-check { opacity:1; }
+  .goal-confirm-btn { width:100%; max-width:400px; background:var(--accent); border:none; border-radius:var(--radius); color:var(--surface2); font-family:"Bebas Neue",sans-serif; font-size:20px; letter-spacing:3px; padding:16px; cursor:pointer; margin-top:20px; transition:all 0.2s; }
+  .goal-confirm-btn:hover { background:#5dd8d5; }
+  .goal-current-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(76,199,196,0.12); border:1px solid rgba(76,199,196,0.3); border-radius:20px; padding:6px 14px; font-family:"JetBrains Mono",monospace; font-size:10px; color:var(--accent); letter-spacing:1px; margin-bottom:24px; }
+  .change-goal-btn { background:none; border:1px solid var(--border); border-radius:8px; color:var(--muted); font-family:"JetBrains Mono",monospace; font-size:10px; padding:4px 10px; cursor:pointer; letter-spacing:.5px; margin-top:8px; transition:all 0.2s; }
+  .change-goal-btn:hover { border-color:var(--accent2); color:var(--accent2); }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
 </style>
   <link rel="manifest" href="manifest.json">
@@ -344,7 +368,11 @@
         <text x="0" y="52" font-family="'Bebas Neue', sans-serif" font-size="36"
           fill="#F4F1E7" textLength="130" lengthAdjust="spacing">LIFT</text>
       </svg>
+      <div style="font-family:'Lora',serif;font-style:italic;font-size:14px;color:var(--muted);margin-bottom:32px;text-align:center;">Train hard. Lift smart. Look great.</div>
       <div class="home-nav-btns">
+        <div id="home-goal-badge" style="display:none" class="goal-current-badge">
+          <span id="home-goal-name">Athletic Performance</span>
+        </div>
         <button class="home-nav-btn" onclick="goToWorkout()">
           <div class="home-btn-left">
             <div class="home-btn-title">Lift</div>
@@ -352,6 +380,7 @@
           </div>
           <div class="home-btn-icon">&#8594;</div>
         </button>
+        <button class="change-goal-btn" id="change-goal-btn" onclick="goToGoalSelect()" style="display:none">&#8635; Change Goal</button>
         <button class="home-nav-btn orange" onclick="goToHistory()">
           <div class="home-btn-left">
             <div class="home-btn-title" style="color:var(--accent2)">History</div>
@@ -367,6 +396,17 @@
           <div class="home-btn-icon">&#8594;</div>
         </button>
       </div>
+    </div>
+  </div>
+
+
+  <!-- GOAL SELECTION SCREEN -->
+  <div id="goal-screen-view" style="display:none">
+    <div class="goal-screen">
+      <div class="goal-screen-title">Choose Your Goal</div>
+      <div class="goal-screen-sub">Your programme, exercises and rep ranges<br>will be built around this.</div>
+      <div class="goal-cards" id="goal-cards-container"></div>
+      <button class="goal-confirm-btn" onclick="confirmGoal()">Build My Programme &#8594;</button>
     </div>
   </div>
 
@@ -567,6 +607,8 @@ const PROGRAMME = [
 
 // ---- STATE ----
 let currentDay = null;
+let currentGoal = null;
+let selectedGoalId = null;
 let sessionData = {};
 let swapTarget = null;
 let restInterval = null;
@@ -575,6 +617,438 @@ let holdInterval = null;
 let holdSeconds = 0;
 let holdCallback = null;
 let workoutStartTime = null;
+
+const GOALS = [
+  {
+    id: "athletic",
+    name: "Athletic Performance",
+    sub: "Built for runners. Posterior chain focus.",
+    colour: "var(--accent)",
+    days: 3,
+    split: "Lower / Upper / Full Body",
+    repRange: "5–12",
+    rest: "90–120 sec",
+    description: "Optimised for runners. Builds posterior chain strength, reduces injury risk and improves running economy."
+  },
+  {
+    id: "strength",
+    name: "Strength",
+    sub: "Heavy compounds. Maximum load.",
+    colour: "#A7D7E8",
+    days: 4,
+    split: "Upper / Lower x2",
+    repRange: "3–6",
+    rest: "3–4 min",
+    description: "Pure strength focus. Heavy compound movements, low reps, maximum rest. Built around the big lifts."
+  },
+  {
+    id: "hypertrophy",
+    name: "Hypertrophy",
+    sub: "Look great. Build muscle.",
+    colour: "var(--accent2)",
+    days: 4,
+    split: "Push / Pull / Legs / Upper",
+    repRange: "8–12",
+    rest: "60–90 sec",
+    description: "Maximise muscle growth. High volume, moderate weight, mix of compound and isolation work."
+  },
+  {
+    id: "fatloss",
+    name: "Fat Loss",
+    sub: "High volume. Short rest. Burn.",
+    colour: "var(--sand)",
+    days: 4,
+    split: "Full Body x4",
+    repRange: "12–15",
+    rest: "45–60 sec",
+    description: "Full body sessions with higher rep ranges and shorter rest. Maximise calorie burn while preserving muscle."
+  },
+  {
+    id: "general",
+    name: "General Fitness",
+    sub: "Balanced. Consistent. Effective.",
+    colour: "var(--muted)",
+    days: 3,
+    split: "Full Body x3",
+    repRange: "10–12",
+    rest: "60–90 sec",
+    description: "Well-rounded fitness. Three full-body sessions per week covering all major movement patterns."
+  }
+];
+
+// ============================================================
+// PROGRAMMES — Full exercise data per goal
+// ============================================================
+
+const PROGRAMMES_BY_GOAL = {
+
+  // ── ATHLETIC PERFORMANCE (current programme) ──────────────
+  athletic: [
+    {
+      id: "day1", number: "01", title: "Lower / Posterior",
+      exercises: [
+        { id:"deadlift", name:"Conventional Deadlift", sets:4, reps:"5-8", unit:"kg", swaps:[{name:"Trap Bar Deadlift",note:"Same pattern, easier on lower back"},{name:"Romanian Deadlift",note:"Less load, more hamstring focus"},{name:"Rack Pull",note:"Deadlift from knee height"}] },
+        { id:"bulgarian", name:"Bulgarian Split Squat", sets:3, reps:"8-10", unit:"kg", perSide:true, swaps:[{name:"Reverse Lunge",note:"Less balance demand"},{name:"Step Up",note:"Easier on knee"},{name:"Goblet Squat",note:"Bilateral fallback"}] },
+        { id:"nordic", name:"Nordic / Slider Curl", sets:3, reps:"5-8", swaps:[{name:"Hamstring Curl Machine",note:"Acceptable fallback"},{name:"Good Morning",note:"Barbell hip hinge"},{name:"Single Leg RDL",note:"Unilateral hamstring"}] },
+        { id:"calf-stand", name:"Standing Calf Raise", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Smith Machine Calf Raise",note:"Easier to load"},{name:"Leg Press Calf Raise",note:"Machine alternative"},{name:"Single Leg Deficit",note:"Harder variation"}] },
+        { id:"calf-seated", name:"Seated Calf Raise", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Bent Knee DB Calf Raise",note:"Substitute with dumbbells"},{name:"Single Leg Deficit",note:"Step variation"},{name:"Standing Calf Raise",note:"Different emphasis"}] },
+        { id:"pallof", name:"Pallof Press", sets:3, reps:"10 / side", swaps:[{name:"Dead Bug",note:"Anti-extension, floor based"},{name:"Cable Wood Chop",note:"Rotational alternative"},{name:"Side Plank",note:"30-45 sec each side"}] }
+      ],
+      finisher:[
+        { id:"dead-bug", name:"Dead Bug", sets:3, reps:"8 / side", isFinisher:true, swaps:[{name:"Hollow Body Hold",note:"25-30 sec hold"},{name:"Bird Dog",note:"Easier pattern"},{name:"Plank",note:"45 sec hold"}] },
+        { id:"hanging-knee", name:"Hanging Knee Raises", sets:3, reps:"10-15", isFinisher:true, swaps:[{name:"Lying Leg Raises",note:"Floor version"},{name:"Captain's Chair",note:"Machine support"},{name:"Ab Wheel",note:"Anti-extension alternative"}] }
+      ]
+    },
+    {
+      id: "day2", number: "02", title: "Upper Body",
+      exercises: [
+        { id:"pulldown", name:"Lat Pulldown", sets:4, reps:"6-10", unit:"kg", swaps:[{name:"Pull-Ups",note:"Harder bodyweight"},{name:"Cable Row Wide",note:"Similar lat engagement"},{name:"Assisted Pull-Up",note:"With assist"}] },
+        { id:"bench", name:"Barbell Bench Press", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"Dumbbell Bench",note:"Greater ROM"},{name:"Incline DB Press",note:"Upper chest emphasis"},{name:"Dips",note:"Bodyweight alternative"}] },
+        { id:"row", name:"Seated Cable Row", sets:3, reps:"8-10", unit:"kg", swaps:[{name:"Dumbbell Row",note:"Unilateral"},{name:"Barbell Row",note:"More load possible"},{name:"Machine Row",note:"Chest-supported"}] },
+        { id:"ohp", name:"Overhead Press", sets:3, reps:"8-10", unit:"kg", swaps:[{name:"Seated DB Press",note:"More stable"},{name:"Arnold Press",note:"DB with rotation"},{name:"Push Press",note:"Leg drive helps"}] },
+        { id:"carries", name:"Farmer Carries", sets:3, reps:"30-40m", unit:"kg", swaps:[{name:"Suitcase Carry",note:"Single hand"},{name:"Trap Bar Carry",note:"Neutral grip"},{name:"Dead Hang",note:"Grip strength"}] },
+        { id:"facepulls-d2", name:"Face Pulls", sets:3, reps:"15-20", swaps:[{name:"Band Pull-Aparts",note:"No cable needed"},{name:"Rear Delt Fly",note:"Machine alternative"},{name:"Cable Reverse Fly",note:"Low cable"}] }
+      ],
+      finisher:[
+        { id:"ab-wheel-d2", name:"Ab Wheel Rollout", sets:3, reps:"8-10", isFinisher:true, swaps:[{name:"TRX Fallout",note:"Suspension version"},{name:"Plank",note:"45-60 sec"},{name:"Dead Bug",note:"Floor anti-extension"}] },
+        { id:"side-plank", name:"Side Plank", sets:3, holdSeconds:35, isFinisher:true, isTimed:true, perSide:true, swaps:[{name:"Copenhagen Plank",note:"Harder adductor version"},{name:"Pallof Press",note:"Anti-rotation cable"},{name:"Dead Bug",note:"Anti-extension floor"}] }
+      ]
+    },
+    {
+      id: "day3", number: "03", title: "Full Body",
+      exercises: [
+        { id:"goblet", name:"Goblet Squat", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Front Squat",note:"More quad load"},{name:"Hack Squat",note:"Machine alternative"},{name:"Leg Press",note:"No balance required"}] },
+        { id:"sl-rdl", name:"Single Leg RDL", sets:3, reps:"8-10", unit:"kg", perSide:true, swaps:[{name:"Romanian Deadlift",note:"Bilateral version"},{name:"Nordic Curl",note:"Eccentric focus"},{name:"Good Morning",note:"Barbell hip hinge"}] },
+        { id:"incline", name:"Incline Dumbbell Press", sets:3, reps:"8-12", unit:"kg", swaps:[{name:"Dips",note:"Bodyweight alternative"},{name:"Flat DB Press",note:"No incline needed"},{name:"Decline Push-Up",note:"Feet elevated"}] },
+        { id:"sl-calf", name:"Single Leg Deficit Calf Raise", sets:3, reps:"10-12", unit:"kg", perSide:true, swaps:[{name:"Standing Calf Raise",note:"Bilateral"},{name:"Seated Calf Raise",note:"Soleus focus"},{name:"Calf Press",note:"Leg press machine"}] },
+        { id:"ab-wheel-d3", name:"Ab Wheel Rollout", sets:3, reps:"8-10", swaps:[{name:"TRX Fallout",note:"Suspension version"},{name:"Plank",note:"45-60 sec"},{name:"Dead Bug",note:"Floor anti-extension"}] },
+        { id:"facepulls-d3", name:"Face Pulls", sets:3, reps:"15-20", swaps:[{name:"Band Pull-Aparts",note:"No cable"},{name:"Rear Delt Fly",note:"Machine alternative"},{name:"Cable Reverse Fly",note:"Low cable"}] }
+      ],
+      finisher:[
+        { id:"cable-crunch", name:"Weighted Cable Crunch", sets:3, reps:"12-15", unit:"kg", isFinisher:true, swaps:[{name:"Decline Sit-Up",note:"Bodyweight alternative"},{name:"Ab Wheel",note:"Anti-extension"},{name:"Hanging Knee Raises",note:"Hanging version"}] },
+        { id:"leg-raises", name:"Lying Leg Raises", sets:3, reps:"10-15", isFinisher:true, swaps:[{name:"Hanging Leg Raises",note:"Harder version"},{name:"Flutter Kicks",note:"3x20 sec"},{name:"Reverse Crunch",note:"Easier alternative"}] }
+      ]
+    }
+  ],
+
+  // ── STRENGTH ─────────────────────────────────────────────
+  strength: [
+    {
+      id:"s-day1", number:"01", title:"Upper A — Push",
+      exercises:[
+        { id:"s-bench", name:"Barbell Bench Press", sets:5, reps:"3-5", unit:"kg", swaps:[{name:"DB Bench Press",note:"Greater ROM"},{name:"Close Grip Bench",note:"More tricep"},{name:"Floor Press",note:"Limited ROM"}] },
+        { id:"s-incline", name:"Incline Barbell Press", sets:4, reps:"4-6", unit:"kg", swaps:[{name:"Incline DB Press",note:"Unilateral option"},{name:"Overhead Press",note:"Shift to shoulders"},{name:"Dips",note:"Bodyweight alternative"}] },
+        { id:"s-ohp", name:"Overhead Press", sets:4, reps:"4-6", unit:"kg", swaps:[{name:"Seated DB Press",note:"More stable"},{name:"Push Press",note:"Leg drive"},{name:"Arnold Press",note:"DB variation"}] },
+        { id:"s-tricep", name:"Tricep Dips", sets:3, reps:"6-8", swaps:[{name:"Skull Crushers",note:"More isolation"},{name:"Close Grip Bench",note:"Compound alternative"},{name:"Cable Pushdown",note:"Light pump work"}] },
+        { id:"s-lateral", name:"Lateral Raises", sets:3, reps:"10-12", swaps:[{name:"Cable Lateral Raise",note:"More tension at top"},{name:"DB Upright Row",note:"Compound alternative"},{name:"Face Pulls",note:"Rear delt focus"}] }
+      ],
+      finisher:[
+        { id:"s-plank1", name:"Plank", sets:3, holdSeconds:45, isFinisher:true, isTimed:true, swaps:[{name:"Ab Wheel",note:"Harder variation"},{name:"Dead Bug",note:"Anti-extension"},{name:"Pallof Press",note:"Anti-rotation"}] }
+      ]
+    },
+    {
+      id:"s-day2", number:"02", title:"Lower A",
+      exercises:[
+        { id:"s-squat", name:"Barbell Back Squat", sets:5, reps:"3-5", unit:"kg", swaps:[{name:"Front Squat",note:"More quad dominant"},{name:"Goblet Squat",note:"Lighter option"},{name:"Leg Press",note:"Machine fallback"}] },
+        { id:"s-rdl", name:"Romanian Deadlift", sets:4, reps:"4-6", unit:"kg", swaps:[{name:"Single Leg RDL",note:"Unilateral version"},{name:"Good Morning",note:"More back"},{name:"Leg Curl Machine",note:"Machine alternative"}] },
+        { id:"s-legpress", name:"Leg Press", sets:3, reps:"6-8", unit:"kg", swaps:[{name:"Hack Squat",note:"Similar pattern"},{name:"Bulgarian Split Squat",note:"Unilateral"},{name:"Goblet Squat",note:"Lighter option"}] },
+        { id:"s-calf", name:"Standing Calf Raise", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"Seated Calf Raise",note:"Soleus focus"},{name:"Single Leg Deficit",note:"Full ROM"},{name:"Leg Press Calf",note:"Machine version"}] }
+      ],
+      finisher:[
+        { id:"s-ab1", name:"Hanging Knee Raises", sets:3, reps:"10-12", isFinisher:true, swaps:[{name:"Lying Leg Raises",note:"Floor version"},{name:"Ab Wheel",note:"Anti-extension"},{name:"Dragon Flag",note:"Advanced"}] }
+      ]
+    },
+    {
+      id:"s-day3", number:"03", title:"Upper B — Pull",
+      exercises:[
+        { id:"s-deadlift", name:"Conventional Deadlift", sets:5, reps:"3-5", unit:"kg", swaps:[{name:"Trap Bar Deadlift",note:"Easier on back"},{name:"Rack Pull",note:"From knee height"},{name:"Romanian Deadlift",note:"More hamstring"}] },
+        { id:"s-pullups", name:"Weighted Pull-Ups", sets:4, reps:"4-6", unit:"kg", swaps:[{name:"Lat Pulldown",note:"Assisted version"},{name:"Cable Row",note:"Horizontal pull"},{name:"Assisted Pull-Up",note:"With band"}] },
+        { id:"s-row", name:"Barbell Row", sets:4, reps:"4-6", unit:"kg", swaps:[{name:"Dumbbell Row",note:"Unilateral"},{name:"Cable Row",note:"Machine version"},{name:"Chest Supported Row",note:"Removes back"}] },
+        { id:"s-facepull", name:"Face Pulls", sets:3, reps:"12-15", swaps:[{name:"Band Pull-Aparts",note:"No cable"},{name:"Rear Delt Fly",note:"Machine"},{name:"Cable Reverse Fly",note:"Low cable"}] },
+        { id:"s-curl", name:"Barbell Curl", sets:3, reps:"6-8", unit:"kg", swaps:[{name:"DB Curl",note:"Unilateral"},{name:"Hammer Curl",note:"Neutral grip"},{name:"Cable Curl",note:"Constant tension"}] }
+      ],
+      finisher:[
+        { id:"s-plank2", name:"Side Plank", sets:3, holdSeconds:40, isFinisher:true, isTimed:true, perSide:true, swaps:[{name:"Pallof Press",note:"Anti-rotation cable"},{name:"Copenhagen Plank",note:"Adductor focus"},{name:"Dead Bug",note:"Anti-extension"}] }
+      ]
+    },
+    {
+      id:"s-day4", number:"04", title:"Lower B",
+      exercises:[
+        { id:"s-squat2", name:"Front Squat", sets:4, reps:"4-6", unit:"kg", swaps:[{name:"Goblet Squat",note:"Lighter option"},{name:"Back Squat",note:"More posterior"},{name:"Hack Squat",note:"Machine version"}] },
+        { id:"s-hip-thrust", name:"Barbell Hip Thrust", sets:4, reps:"6-8", unit:"kg", swaps:[{name:"Glute Bridge",note:"Floor version"},{name:"Cable Pull Through",note:"Standing alternative"},{name:"Romanian Deadlift",note:"More hamstring"}] },
+        { id:"s-lunge", name:"Walking Lunges", sets:3, reps:"8-10", unit:"kg", perSide:true, swaps:[{name:"Bulgarian Split Squat",note:"More stable"},{name:"Reverse Lunge",note:"Easier on knees"},{name:"Step Up",note:"Functional alternative"}] },
+        { id:"s-calf2", name:"Seated Calf Raise", sets:4, reps:"10-12", unit:"kg", swaps:[{name:"Standing Calf Raise",note:"Gastroc focus"},{name:"Single Leg Deficit",note:"Full ROM"},{name:"Leg Press Calf",note:"Machine version"}] }
+      ],
+      finisher:[
+        { id:"s-ab2", name:"Ab Wheel Rollout", sets:3, reps:"8-10", isFinisher:true, swaps:[{name:"TRX Fallout",note:"Suspension version"},{name:"Dead Bug",note:"Anti-extension"},{name:"Plank",note:"45-60 sec"}] },
+        { id:"s-leg-raise", name:"Lying Leg Raises", sets:3, reps:"12-15", isFinisher:true, swaps:[{name:"Hanging Knee Raises",note:"Hanging version"},{name:"Flutter Kicks",note:"3x20 sec"},{name:"Reverse Crunch",note:"Easier"}] }
+      ]
+    }
+  ],
+
+  // ── HYPERTROPHY ──────────────────────────────────────────
+  hypertrophy: [
+    {
+      id:"h-day1", number:"01", title:"Push",
+      exercises:[
+        { id:"h-bench", name:"Barbell Bench Press", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"DB Bench Press",note:"Greater ROM"},{name:"Incline DB Press",note:"Upper chest"},{name:"Dips",note:"Bodyweight"}] },
+        { id:"h-incline", name:"Incline DB Press", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Incline Barbell",note:"More load"},{name:"Cable Fly",note:"Isolation"},{name:"Pec Dec",note:"Machine isolation"}] },
+        { id:"h-ohp", name:"Overhead Press", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"Seated DB Press",note:"More stable"},{name:"Arnold Press",note:"More ROM"},{name:"Machine Press",note:"Safer"}] },
+        { id:"h-lateral", name:"Lateral Raises", sets:4, reps:"12-15", swaps:[{name:"Cable Lateral",note:"More tension"},{name:"Machine Lateral",note:"Safer"},{name:"Upright Row",note:"Compound"}] },
+        { id:"h-tricep-push", name:"Cable Tricep Pushdown", sets:3, reps:"12-15", swaps:[{name:"Skull Crushers",note:"More stretch"},{name:"Overhead Extension",note:"Long head"},{name:"Dips",note:"Compound"}] },
+        { id:"h-chest-fly", name:"Cable Chest Fly", sets:3, reps:"12-15", swaps:[{name:"Pec Dec",note:"Machine version"},{name:"DB Fly",note:"Free weight"},{name:"Incline DB Fly",note:"Upper chest"}] }
+      ],
+      finisher:[
+        { id:"h-plank1", name:"Plank", sets:3, holdSeconds:45, isFinisher:true, isTimed:true, swaps:[{name:"Ab Wheel",note:"Harder"},{name:"Dead Bug",note:"Anti-extension"},{name:"Hollow Hold",note:"Gymnastic"}] },
+        { id:"h-crunch1", name:"Cable Crunch", sets:3, reps:"15-20", isFinisher:true, swaps:[{name:"Decline Sit-Up",note:"Bodyweight"},{name:"Machine Crunch",note:"Machine version"},{name:"Ab Wheel",note:"Anti-extension"}] }
+      ]
+    },
+    {
+      id:"h-day2", number:"02", title:"Pull",
+      exercises:[
+        { id:"h-deadlift", name:"Romanian Deadlift", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"Conventional Deadlift",note:"More compound"},{name:"Single Leg RDL",note:"Unilateral"},{name:"Good Morning",note:"More back"}] },
+        { id:"h-pulldown", name:"Lat Pulldown", sets:4, reps:"10-12", unit:"kg", swaps:[{name:"Pull-Ups",note:"Bodyweight"},{name:"Cable Row Wide",note:"Horizontal pull"},{name:"Assisted Pull-Up",note:"With assist"}] },
+        { id:"h-row", name:"Seated Cable Row", sets:4, reps:"10-12", unit:"kg", swaps:[{name:"DB Row",note:"Unilateral"},{name:"Barbell Row",note:"More load"},{name:"Machine Row",note:"Chest supported"}] },
+        { id:"h-facepull", name:"Face Pulls", sets:3, reps:"15-20", swaps:[{name:"Band Pull-Aparts",note:"No cable"},{name:"Rear Delt Fly",note:"Machine"},{name:"Reverse Fly",note:"Cable"}] },
+        { id:"h-curl", name:"DB Curl", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Barbell Curl",note:"More load"},{name:"Hammer Curl",note:"Neutral grip"},{name:"Cable Curl",note:"Constant tension"}] },
+        { id:"h-hammer", name:"Hammer Curl", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"DB Curl",note:"Supinated"},{name:"Cross Body Curl",note:"Variation"},{name:"Cable Curl",note:"Constant tension"}] }
+      ],
+      finisher:[
+        { id:"h-ab-wheel", name:"Ab Wheel Rollout", sets:3, reps:"10-12", isFinisher:true, swaps:[{name:"TRX Fallout",note:"Suspension"},{name:"Dead Bug",note:"Anti-extension"},{name:"Plank",note:"45 sec"}] },
+        { id:"h-side-plank", name:"Side Plank", sets:3, holdSeconds:35, isFinisher:true, isTimed:true, perSide:true, swaps:[{name:"Copenhagen Plank",note:"Harder"},{name:"Pallof Press",note:"Anti-rotation"},{name:"Dead Bug",note:"Floor work"}] }
+      ]
+    },
+    {
+      id:"h-day3", number:"03", title:"Legs",
+      exercises:[
+        { id:"h-squat", name:"Barbell Back Squat", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"Goblet Squat",note:"Lighter"},{name:"Leg Press",note:"Machine"},{name:"Bulgarian Split Squat",note:"Unilateral"}] },
+        { id:"h-legpress", name:"Leg Press", sets:4, reps:"10-12", unit:"kg", swaps:[{name:"Hack Squat",note:"Similar"},{name:"Goblet Squat",note:"Free weight"},{name:"Front Squat",note:"More quad"}] },
+        { id:"h-legcurl", name:"Leg Curl Machine", sets:4, reps:"10-12", unit:"kg", swaps:[{name:"Nordic Curl",note:"Harder eccentric"},{name:"Romanian Deadlift",note:"Free weight"},{name:"Slider Curl",note:"Floor version"}] },
+        { id:"h-split", name:"Bulgarian Split Squat", sets:3, reps:"10-12", unit:"kg", perSide:true, swaps:[{name:"Reverse Lunge",note:"Less balance"},{name:"Step Up",note:"Functional"},{name:"Lateral Lunge",note:"Frontal plane"}] },
+        { id:"h-calf", name:"Standing Calf Raise", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Seated Calf Raise",note:"Soleus"},{name:"Single Leg Deficit",note:"Full ROM"},{name:"Leg Press Calf",note:"Machine"}] }
+      ],
+      finisher:[
+        { id:"h-leg-raise", name:"Hanging Knee Raises", sets:3, reps:"12-15", isFinisher:true, swaps:[{name:"Lying Leg Raises",note:"Floor version"},{name:"Ab Wheel",note:"Anti-extension"},{name:"Cable Crunch",note:"Weighted"}] },
+        { id:"h-cable-crunch", name:"Weighted Cable Crunch", sets:3, reps:"15-20", unit:"kg", isFinisher:true, swaps:[{name:"Decline Sit-Up",note:"Bodyweight"},{name:"Machine Crunch",note:"Machine"},{name:"Ab Wheel",note:"Anti-extension"}] }
+      ]
+    },
+    {
+      id:"h-day4", number:"04", title:"Upper",
+      exercises:[
+        { id:"h-bench2", name:"Incline Barbell Press", sets:4, reps:"8-10", unit:"kg", swaps:[{name:"DB Incline",note:"Greater ROM"},{name:"Flat Bench",note:"More chest"},{name:"Dips",note:"Bodyweight"}] },
+        { id:"h-pulldown2", name:"Wide Grip Lat Pulldown", sets:4, reps:"10-12", unit:"kg", swaps:[{name:"Pull-Ups",note:"Bodyweight"},{name:"Close Grip Pulldown",note:"Bicep bias"},{name:"Straight Arm Pulldown",note:"Isolation"}] },
+        { id:"h-ohp2", name:"DB Shoulder Press", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Barbell OHP",note:"More load"},{name:"Arnold Press",note:"More ROM"},{name:"Cable Lateral",note:"Isolation"}] },
+        { id:"h-row2", name:"DB Row", sets:4, reps:"10-12", unit:"kg", perSide:true, swaps:[{name:"Cable Row",note:"Machine"},{name:"Barbell Row",note:"More load"},{name:"Chest Supported Row",note:"No back"}] },
+        { id:"h-tricep2", name:"Overhead Tricep Extension", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Skull Crushers",note:"Lying version"},{name:"Cable Pushdown",note:"Constant tension"},{name:"Dips",note:"Compound"}] },
+        { id:"h-curl2", name:"Barbell Curl", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"DB Curl",note:"Unilateral"},{name:"Hammer Curl",note:"Neutral grip"},{name:"Preacher Curl",note:"No cheat"}] }
+      ],
+      finisher:[
+        { id:"h-plank2", name:"Plank", sets:3, holdSeconds:50, isFinisher:true, isTimed:true, swaps:[{name:"Ab Wheel",note:"Harder"},{name:"Dead Bug",note:"Anti-extension"},{name:"Pallof Press",note:"Anti-rotation"}] },
+        { id:"h-lying-raise", name:"Lying Leg Raises", sets:3, reps:"12-15", isFinisher:true, swaps:[{name:"Hanging Knee Raises",note:"Hanging"},{name:"Flutter Kicks",note:"3x20 sec"},{name:"Reverse Crunch",note:"Easier"}] }
+      ]
+    }
+  ],
+
+  // ── FAT LOSS ──────────────────────────────────────────────
+  fatloss: [
+    {
+      id:"fl-day1", number:"01", title:"Full Body A",
+      exercises:[
+        { id:"fl-squat", name:"Goblet Squat", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Leg Press",note:"Machine version"},{name:"Bulgarian Split Squat",note:"Unilateral"},{name:"Reverse Lunge",note:"Easier"}] },
+        { id:"fl-press", name:"Dumbbell Bench Press", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Push-Ups",note:"Bodyweight"},{name:"Cable Fly",note:"Isolation"},{name:"Incline DB",note:"Upper chest"}] },
+        { id:"fl-row", name:"DB Row", sets:4, reps:"12-15", unit:"kg", perSide:true, swaps:[{name:"Cable Row",note:"Machine"},{name:"Lat Pulldown",note:"Vertical pull"},{name:"Band Row",note:"Light resistance"}] },
+        { id:"fl-rdl", name:"Romanian Deadlift", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Single Leg RDL",note:"Unilateral"},{name:"Good Morning",note:"More back"},{name:"Leg Curl",note:"Machine"}] },
+        { id:"fl-ohp", name:"DB Overhead Press", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Cable Press",note:"Constant tension"},{name:"Arnold Press",note:"More ROM"},{name:"Lateral Raises",note:"Isolation"}] },
+        { id:"fl-carry", name:"Farmer Carries", sets:3, reps:"30-40m", unit:"kg", swaps:[{name:"Suitcase Carry",note:"Single hand"},{name:"KB Swing",note:"Dynamic"},{name:"Dead Hang",note:"Grip"}] }
+      ],
+      finisher:[
+        { id:"fl-ab1", name:"Ab Wheel Rollout", sets:3, reps:"12-15", isFinisher:true, swaps:[{name:"Dead Bug",note:"Anti-extension"},{name:"Plank",note:"45 sec"},{name:"TRX Fallout",note:"Suspension"}] },
+        { id:"fl-leg-raise1", name:"Lying Leg Raises", sets:3, reps:"15-20", isFinisher:true, swaps:[{name:"Hanging Knee Raises",note:"Hanging"},{name:"Flutter Kicks",note:"3x20 sec"},{name:"Reverse Crunch",note:"Easier"}] }
+      ]
+    },
+    {
+      id:"fl-day2", number:"02", title:"Full Body B",
+      exercises:[
+        { id:"fl-deadlift", name:"Trap Bar Deadlift", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Conventional Deadlift",note:"More technical"},{name:"Romanian Deadlift",note:"More hamstring"},{name:"Leg Press",note:"Machine"}] },
+        { id:"fl-pull", name:"Lat Pulldown", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Pull-Ups",note:"Harder"},{name:"Cable Row",note:"Horizontal"},{name:"Band Pulldown",note:"Light"}] },
+        { id:"fl-split", name:"Bulgarian Split Squat", sets:3, reps:"12-15", unit:"kg", perSide:true, swaps:[{name:"Reverse Lunge",note:"Less balance"},{name:"Step Up",note:"Functional"},{name:"Goblet Squat",note:"Bilateral"}] },
+        { id:"fl-bench", name:"Incline DB Press", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"DB Bench",note:"Flat version"},{name:"Push-Ups",note:"Bodyweight"},{name:"Cable Fly",note:"Isolation"}] },
+        { id:"fl-hip", name:"Hip Thrust", sets:3, reps:"15-20", unit:"kg", swaps:[{name:"Glute Bridge",note:"Floor version"},{name:"Cable Pull Through",note:"Standing"},{name:"Donkey Kicks",note:"Bodyweight"}] }
+      ],
+      finisher:[
+        { id:"fl-plank1", name:"Side Plank", sets:3, holdSeconds:30, isFinisher:true, isTimed:true, perSide:true, swaps:[{name:"Copenhagen Plank",note:"Harder"},{name:"Pallof Press",note:"Anti-rotation"},{name:"Dead Bug",note:"Anti-extension"}] },
+        { id:"fl-crunch1", name:"Cable Crunch", sets:3, reps:"15-20", isFinisher:true, swaps:[{name:"Decline Sit-Up",note:"Bodyweight"},{name:"Machine Crunch",note:"Machine"},{name:"Ab Wheel",note:"Anti-extension"}] }
+      ]
+    },
+    {
+      id:"fl-day3", number:"03", title:"Full Body C",
+      exercises:[
+        { id:"fl-squat2", name:"Front Squat / Goblet", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Leg Press",note:"Machine"},{name:"Hack Squat",note:"Machine quad"},{name:"Reverse Lunge",note:"Unilateral"}] },
+        { id:"fl-push", name:"Push-Ups", sets:4, reps:"12-20", swaps:[{name:"DB Bench",note:"Added load"},{name:"Incline Push-Up",note:"Easier"},{name:"Decline Push-Up",note:"Upper chest"}] },
+        { id:"fl-row2", name:"Cable Row", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"DB Row",note:"Unilateral"},{name:"Barbell Row",note:"More load"},{name:"Machine Row",note:"Supported"}] },
+        { id:"fl-rdl2", name:"Single Leg RDL", sets:3, reps:"12-15", unit:"kg", perSide:true, swaps:[{name:"Romanian Deadlift",note:"Bilateral"},{name:"Good Morning",note:"Barbell"},{name:"Leg Curl",note:"Machine"}] },
+        { id:"fl-lateral", name:"Lateral Raises", sets:3, reps:"15-20", swaps:[{name:"Cable Lateral",note:"More tension"},{name:"Machine Lateral",note:"Safer"},{name:"Face Pulls",note:"Rear delt"}] },
+        { id:"fl-calf", name:"Standing Calf Raise", sets:3, reps:"15-20", unit:"kg", swaps:[{name:"Seated Calf Raise",note:"Soleus"},{name:"Single Leg",note:"More load"},{name:"Leg Press Calf",note:"Machine"}] }
+      ],
+      finisher:[
+        { id:"fl-ab2", name:"Dead Bug", sets:3, reps:"10 / side", isFinisher:true, swaps:[{name:"Plank",note:"Isometric"},{name:"Ab Wheel",note:"Anti-extension"},{name:"Bird Dog",note:"Easier"}] },
+        { id:"fl-knee-raise", name:"Hanging Knee Raises", sets:3, reps:"15-20", isFinisher:true, swaps:[{name:"Lying Leg Raises",note:"Floor"},{name:"Cable Crunch",note:"Weighted"},{name:"Reverse Crunch",note:"Easier"}] }
+      ]
+    },
+    {
+      id:"fl-day4", number:"04", title:"Full Body D",
+      exercises:[
+        { id:"fl-stiff", name:"Stiff Leg Deadlift", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Romanian Deadlift",note:"More similar"},{name:"Nordic Curl",note:"Harder eccentric"},{name:"Leg Curl",note:"Machine"}] },
+        { id:"fl-chest", name:"Barbell Bench Press", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"DB Bench",note:"Greater ROM"},{name:"Cable Fly",note:"Isolation"},{name:"Dips",note:"Bodyweight"}] },
+        { id:"fl-pull2", name:"Wide Grip Pulldown", sets:4, reps:"12-15", unit:"kg", swaps:[{name:"Pull-Ups",note:"Bodyweight"},{name:"Close Grip",note:"Bicep bias"},{name:"Straight Arm",note:"Isolation"}] },
+        { id:"fl-lunge", name:"Walking Lunges", sets:3, reps:"12-15", unit:"kg", perSide:true, swaps:[{name:"Reverse Lunge",note:"Less knee stress"},{name:"Step Up",note:"Functional"},{name:"Bulgarian Split",note:"More stable"}] },
+        { id:"fl-press2", name:"DB Shoulder Press", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Barbell OHP",note:"More load"},{name:"Arnold Press",note:"More ROM"},{name:"Cable Press",note:"Constant tension"}] }
+      ],
+      finisher:[
+        { id:"fl-plank2", name:"Plank", sets:3, holdSeconds:45, isFinisher:true, isTimed:true, swaps:[{name:"Ab Wheel",note:"Harder"},{name:"Dead Bug",note:"Anti-extension"},{name:"Side Plank",note:"Lateral"}] },
+        { id:"fl-crunch2", name:"Lying Leg Raises", sets:3, reps:"15-20", isFinisher:true, swaps:[{name:"Hanging Knee Raises",note:"Hanging"},{name:"Flutter Kicks",note:"3x20 sec"},{name:"Reverse Crunch",note:"Easier"}] }
+      ]
+    }
+  ],
+
+  // ── GENERAL FITNESS ───────────────────────────────────────
+  general: [
+    {
+      id:"g-day1", number:"01", title:"Full Body A",
+      exercises:[
+        { id:"g-squat", name:"Goblet Squat", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Leg Press",note:"Machine"},{name:"Bulgarian Split",note:"Unilateral"},{name:"Front Squat",note:"More quad"}] },
+        { id:"g-bench", name:"Dumbbell Bench Press", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Barbell Bench",note:"More load"},{name:"Push-Ups",note:"Bodyweight"},{name:"Cable Fly",note:"Isolation"}] },
+        { id:"g-row", name:"Seated Cable Row", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"DB Row",note:"Unilateral"},{name:"Barbell Row",note:"More load"},{name:"Machine Row",note:"Supported"}] },
+        { id:"g-rdl", name:"Romanian Deadlift", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Single Leg RDL",note:"Unilateral"},{name:"Good Morning",note:"More back"},{name:"Leg Curl",note:"Machine"}] },
+        { id:"g-ohp", name:"Overhead Press", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"DB Shoulder Press",note:"More stable"},{name:"Arnold Press",note:"More ROM"},{name:"Cable Press",note:"Constant tension"}] },
+        { id:"g-calf", name:"Calf Raises", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Seated Calf Raise",note:"Soleus"},{name:"Single Leg",note:"More load"},{name:"Leg Press Calf",note:"Machine"}] }
+      ],
+      finisher:[
+        { id:"g-plank1", name:"Plank", sets:3, holdSeconds:40, isFinisher:true, isTimed:true, swaps:[{name:"Ab Wheel",note:"Harder"},{name:"Dead Bug",note:"Anti-extension"},{name:"Side Plank",note:"Lateral"}] },
+        { id:"g-crunch1", name:"Ab Wheel Rollout", sets:3, reps:"8-10", isFinisher:true, swaps:[{name:"Dead Bug",note:"Anti-extension"},{name:"Plank",note:"Isometric"},{name:"TRX Fallout",note:"Suspension"}] }
+      ]
+    },
+    {
+      id:"g-day2", number:"02", title:"Full Body B",
+      exercises:[
+        { id:"g-deadlift", name:"Conventional Deadlift", sets:3, reps:"8-10", unit:"kg", swaps:[{name:"Trap Bar Deadlift",note:"Easier"},{name:"Romanian Deadlift",note:"More hamstring"},{name:"Leg Press",note:"Machine"}] },
+        { id:"g-pulldown", name:"Lat Pulldown", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Pull-Ups",note:"Bodyweight"},{name:"Cable Row",note:"Horizontal"},{name:"Assisted Pull-Up",note:"With assist"}] },
+        { id:"g-split", name:"Bulgarian Split Squat", sets:3, reps:"10-12", unit:"kg", perSide:true, swaps:[{name:"Reverse Lunge",note:"Less balance"},{name:"Step Up",note:"Functional"},{name:"Goblet Squat",note:"Bilateral"}] },
+        { id:"g-incline", name:"Incline DB Press", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Flat DB Bench",note:"Flat version"},{name:"Push-Ups",note:"Bodyweight"},{name:"Cable Fly",note:"Isolation"}] },
+        { id:"g-carry", name:"Farmer Carries", sets:3, reps:"30-40m", unit:"kg", swaps:[{name:"Suitcase Carry",note:"Single hand"},{name:"Dead Hang",note:"Grip work"},{name:"Trap Bar Carry",note:"Neutral grip"}] }
+      ],
+      finisher:[
+        { id:"g-side-plank", name:"Side Plank", sets:3, holdSeconds:35, isFinisher:true, isTimed:true, perSide:true, swaps:[{name:"Copenhagen Plank",note:"Harder"},{name:"Pallof Press",note:"Anti-rotation"},{name:"Dead Bug",note:"Anti-extension"}] },
+        { id:"g-leg-raise", name:"Lying Leg Raises", sets:3, reps:"10-15", isFinisher:true, swaps:[{name:"Hanging Knee Raises",note:"Hanging"},{name:"Flutter Kicks",note:"3x20 sec"},{name:"Reverse Crunch",note:"Easier"}] }
+      ]
+    },
+    {
+      id:"g-day3", number:"03", title:"Full Body C",
+      exercises:[
+        { id:"g-hip", name:"Hip Thrust", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Glute Bridge",note:"Floor"},{name:"Cable Pull Through",note:"Standing"},{name:"Romanian Deadlift",note:"More hamstring"}] },
+        { id:"g-bench2", name:"Barbell Bench Press", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"DB Bench",note:"Greater ROM"},{name:"Incline DB",note:"Upper chest"},{name:"Dips",note:"Bodyweight"}] },
+        { id:"g-row2", name:"DB Row", sets:3, reps:"10-12", unit:"kg", perSide:true, swaps:[{name:"Cable Row",note:"Machine"},{name:"Barbell Row",note:"More load"},{name:"Machine Row",note:"Supported"}] },
+        { id:"g-squat2", name:"Front Squat / Goblet", sets:3, reps:"10-12", unit:"kg", swaps:[{name:"Leg Press",note:"Machine"},{name:"Hack Squat",note:"Machine quad"},{name:"Reverse Lunge",note:"Unilateral"}] },
+        { id:"g-face", name:"Face Pulls", sets:3, reps:"15-20", swaps:[{name:"Band Pull-Aparts",note:"No cable"},{name:"Rear Delt Fly",note:"Machine"},{name:"Cable Reverse Fly",note:"Low cable"}] },
+        { id:"g-calf2", name:"Seated Calf Raise", sets:3, reps:"12-15", unit:"kg", swaps:[{name:"Standing Calf Raise",note:"Gastroc"},{name:"Single Leg Deficit",note:"Full ROM"},{name:"Leg Press Calf",note:"Machine"}] }
+      ],
+      finisher:[
+        { id:"g-cable-crunch", name:"Weighted Cable Crunch", sets:3, reps:"12-15", unit:"kg", isFinisher:true, swaps:[{name:"Decline Sit-Up",note:"Bodyweight"},{name:"Machine Crunch",note:"Machine"},{name:"Ab Wheel",note:"Anti-extension"}] },
+        { id:"g-dead-bug", name:"Dead Bug", sets:3, reps:"8 / side", isFinisher:true, swaps:[{name:"Plank",note:"Isometric"},{name:"Hollow Hold",note:"Gymnastic"},{name:"Bird Dog",note:"Easier"}] }
+      ]
+    }
+  ]
+};
+
+
+
+// ── GOAL SELECTION ────────────────────────────────────────────────────────────
+
+function renderGoalCards() {
+  const container = document.getElementById("goal-cards-container");
+  if (!container) return;
+  container.innerHTML = "";
+  GOALS.forEach(function(goal) {
+    const card = document.createElement("button");
+    card.className = "goal-card" + (selectedGoalId === goal.id ? " selected" : "");
+    card.style.borderColor = selectedGoalId === goal.id ? goal.colour : "var(--border)";
+    card.setAttribute("data-id", goal.id);
+    card.onclick = function() { selectGoal(goal.id); };
+    card.innerHTML =
+      "<div class='goal-card-top'>" +
+        "<div>" +
+          "<div class='goal-card-name' style='color:" + goal.colour + "'>" + goal.name + "</div>" +
+          "<div class='goal-card-sub'>" + goal.sub + "</div>" +
+        "</div>" +
+        "<div class='goal-check' style='color:" + goal.colour + "'>&#10003;</div>" +
+      "</div>" +
+      "<div class='goal-card-meta'>" +
+        "<span class='goal-meta-chip'>" + goal.days + " days/week</span>" +
+        "<span class='goal-meta-chip'>" + goal.split + "</span>" +
+        "<span class='goal-meta-chip'>" + goal.repRange + " reps</span>" +
+        "<span class='goal-meta-chip'>Rest: " + goal.rest + "</span>" +
+      "</div>";
+    container.appendChild(card);
+  });
+}
+
+function selectGoal(id) {
+  selectedGoalId = id;
+  renderGoalCards();
+}
+
+function confirmGoal() {
+  if (!selectedGoalId) { showToast("Please select a goal first"); return; }
+  const storage = getStorage();
+  storage.currentGoal = selectedGoalId;
+  saveStorage(storage);
+  currentGoal = selectedGoalId;
+  document.getElementById("goal-screen-view").style.display = "none";
+  document.getElementById("home-screen-view").style.display = "block";
+  updateHomeBadge();
+}
+
+function goToGoalSelect() {
+  document.getElementById("home-screen-view").style.display = "none";
+  document.getElementById("goal-screen-view").style.display = "block";
+  selectedGoalId = currentGoal;
+  renderGoalCards();
+}
+
+function updateHomeBadge() {
+  const goal = GOALS.find(function(g) { return g.id === currentGoal; });
+  const badge = document.getElementById("home-goal-badge");
+  const nameEl = document.getElementById("home-goal-name");
+  const changeBtn = document.getElementById("change-goal-btn");
+  if (goal && badge && nameEl) {
+    nameEl.textContent = goal.name;
+    badge.style.display = "inline-flex";
+    badge.style.borderColor = goal.colour;
+    nameEl.style.color = goal.colour;
+    if (changeBtn) changeBtn.style.display = "block";
+  }
+}
+
+function getCurrentProgramme() {
+  return PROGRAMMES_BY_GOAL[currentGoal] || PROGRAMMES_BY_GOAL["athletic"];
+}
+
+function initGoal() {
+  const storage = getStorage();
+  if (storage.currentGoal) {
+    currentGoal = storage.currentGoal;
+    selectedGoalId = currentGoal;
+    updateHomeBadge();
+    renderDayCards();
+  } else {
+    // First time — show goal selection
+    document.getElementById("home-screen-view").style.display = "none";
+    document.getElementById("goal-screen-view").style.display = "block";
+    renderGoalCards();
+  }
+}
+
+
 
 // ---- STORAGE ----
 function getStorage() { try { const d = localStorage.getItem("trailhead_lift"); return d ? JSON.parse(d) : { history: [] }; } catch(e) { return { history: [] }; } }
@@ -600,11 +1074,20 @@ function backToSelect() {
 }
 // goHome defined in new nav section
 
+// Init — load goal from storage
+(function initApp() {
+  const storage = getStorage();
+  if (storage.currentGoal) {
+    currentGoal = storage.currentGoal;
+  }
+  goHome();
+})();
+
 // ---- DAY CARDS ----
 function renderDayCards() {
   const c = document.getElementById("day-cards-container");
   c.innerHTML = "";
-  PROGRAMME.forEach(day => {
+  getCurrentProgramme().forEach(day => {
     const last = getLastSession(day.id);
     const lastText = last ? "Last: " + formatDate(last.date) : "No sessions yet";
     const allEx = [...day.exercises, ...day.finisher];
@@ -620,7 +1103,7 @@ function renderDayCards() {
 
 // ---- WORKOUT ----
 function startWorkout(dayId) {
-  currentDay = JSON.parse(JSON.stringify(PROGRAMME.find(d => d.id === dayId)));
+  currentDay = JSON.parse(JSON.stringify(getCurrentProgramme().find(d => d.id === dayId)));
   sessionData = {};
   workoutStartTime = Date.now();
   // Initialise deload state
@@ -995,19 +1478,26 @@ function getDeloadWeight(lastWeight) {
 
 // ---- NAVIGATION ----
 function goHome() {
-  // Hide all sub-views
   document.getElementById("day-select-view").style.display = "none";
   document.getElementById("workout-view").style.display = "none";
   document.getElementById("complete-screen").classList.remove("visible");
-  document.getElementById("home-screen-view").style.display = "block";
-  // Hide all pages except home
+  document.getElementById("goal-screen-view").style.display = "none";
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.getElementById("page-home").classList.add("active");
   stopRestTimer(); stopHoldTimer();
   currentDay = null; sessionData = {};
+  if (!currentGoal) {
+    document.getElementById("home-screen-view").style.display = "none";
+    document.getElementById("goal-screen-view").style.display = "block";
+    renderGoalCards();
+  } else {
+    document.getElementById("home-screen-view").style.display = "block";
+    updateHomeBadge();
+  }
 }
 
 function goToWorkout() {
+  if (!currentGoal) { goToGoalSelect(); return; }
   document.getElementById("home-screen-view").style.display = "none";
   document.getElementById("day-select-view").style.display = "block";
   renderDayCards();
@@ -1133,7 +1623,18 @@ function showPage(page) {
   if (page === "dashboard") { goToDashboard(); return; }
 }
 
-goHome();
+// ============================================================
+// TRAILHEAD LIFT — Goal-Based Programme System
+// ============================================================
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.innerHTML = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+
+initGoal();
 </script>
 <script>
 if ("serviceWorker" in navigator) {

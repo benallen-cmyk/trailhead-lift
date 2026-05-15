@@ -1,4 +1,4 @@
-const CACHE = 'trailhead-lift-v5';
+const CACHE = 'trailhead-lift-v7';
 const ASSETS = [
   '/trailhead-lift/',
   '/trailhead-lift/index.html',
@@ -6,12 +6,10 @@ const ASSETS = [
   '/trailhead-lift/icon-192.png',
   '/trailhead-lift/icon-512.png',
 ];
-
 self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
-
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -19,7 +17,6 @@ self.addEventListener('activate', e => {
     ).then(() => self.clients.claim())
   );
 });
-
 self.addEventListener('fetch', e => {
   e.respondWith(
     caches.match(e.request).then(cached => {

@@ -334,6 +334,20 @@
   .change-goal-btn { background:none; border:1px solid var(--border); border-radius:8px; color:var(--muted); font-family:"JetBrains Mono",monospace; font-size:10px; padding:4px 10px; cursor:pointer; letter-spacing:.5px; margin-top:8px; transition:all 0.2s; }
   .change-goal-btn:hover { border-color:var(--accent2); color:var(--accent2); }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+  .info-btn { background:none; border:1px solid var(--border); border-radius:50%; width:22px; height:22px; color:var(--muted); font-size:13px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; margin-left:8px; transition:all .2s; flex-shrink:0; padding:0; vertical-align:middle; line-height:1; }
+  .info-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .info-panel { display:none; padding:12px 14px; background:var(--surface2); border-top:1px solid var(--border); }
+  .info-panel.open { display:block; animation:fadeIn .2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+  .info-panel-section { margin-bottom:10px; }
+  .info-panel-section:last-child { margin-bottom:0; }
+  .info-panel-label { font-family:"JetBrains Mono",monospace; font-size:9px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; }
+  .info-cue { font-size:12px; color:var(--accent); padding:2px 0; line-height:1.5; }
+  .info-cue::before { content:"✓ "; }
+  .info-mistake { font-size:12px; color:#e57370; padding:2px 0; line-height:1.5; }
+  .info-mistake::before { content:"✗ "; }
+
 </style>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -1107,6 +1121,16 @@ function startWorkout(dayId) {
   currentDay = JSON.parse(JSON.stringify(getCurrentProgramme().find(d => d.id === dayId)));
   sessionData = {};
   workoutStartTime = Date.now();
+
+  // Apply persisted swaps
+  const applySwaps = function(list) {
+    list.forEach(function(ex) {
+      const saved = getPersistedSwapName(ex.id);
+      if (saved) ex.name = saved;
+    });
+  };
+  applySwaps(currentDay.exercises);
+  applySwaps(currentDay.finisher);
   // Initialise deload state
   applyDeloadUI(computeIsDeload());
   // Show warmup reminder
@@ -1190,10 +1214,23 @@ function buildExCard(ex, ei, isFinisher) {
     if (rec) recHtml = "<div class=\"weight-rec " + rec.type + "\"><span>" + rec.icon + "</span><span>" + rec.msg + "</span></div>";
   }
 
+  const instrData = typeof EXERCISE_INSTRUCTIONS !== "undefined" ? EXERCISE_INSTRUCTIONS[ex.id] : null;
+  const infoBtnHtml = instrData
+    ? " <button class=\"info-btn\" onclick=\"event.stopPropagation();toggleInstructions('" + ex.id + "')\" title=\"Form cues\">&#9432;</button>"
+    : "";
+  const infoPanelHtml = instrData
+    ? "<div class=\"info-panel\" id=\"info-panel-" + ex.id + "\">" +
+      "<div class=\"info-panel-section\"><div class=\"info-panel-label\">Form Cues</div>" +
+      instrData.cues.map(function(c){ return "<div class=\"info-cue\">&#10003; " + c + "</div>"; }).join("") +
+      "</div><div class=\"info-panel-section\"><div class=\"info-panel-label\">Common Mistakes</div>" +
+      instrData.mistakes.map(function(m){ return "<div class=\"info-mistake\">&#10007; " + m + "</div>"; }).join("") +
+      "</div></div>"
+    : "";
+
   card.innerHTML =
     "<div class=\"exercise-top\" onclick=\"toggleSets('" + ex.id + "')\">" +
-      "<div>" +
-        "<div class=\"exercise-name\">" + ex.name + "</div>" +
+      "<div style=\"flex:1\">" +
+        "<div class=\"exercise-name\">" + ex.name + infoBtnHtml + "</div>" +
         "<div class=\"exercise-meta\">" + ex.sets + " sets &middot; " + repsLabel + "</div>" +
       "</div>" +
       "<div class=\"ex-actions\">" +
@@ -1201,6 +1238,7 @@ function buildExCard(ex, ei, isFinisher) {
         "<div class=\"complete-indicator " + (allLogged ? "done" : "") + "\" id=\"ci-" + ex.id + "\">" + (allLogged ? "&#10003;" : "") + "</div>" +
       "</div>" +
     "</div>" +
+    infoPanelHtml +
     "<div class=\"sets-area\" id=\"sets-area-" + ex.id + "\" style=\"display:none;\">" + setsHtml + recHtml + "</div>";
 
   if (ei === 0 && !isFinisher) setTimeout(() => { const a = card.querySelector(".sets-area"); if (a) a.style.display = "block"; }, 50);
@@ -1331,8 +1369,23 @@ function doSwap(swapIdx) {
   const swap = ex.swaps[swapIdx];
   list[exIdx] = { ...ex, name: swap.name };
   sessionData[exId] = { name: swap.name, sets: Array.from({length: ex.sets}, () => ({ weight: "", reps: "", logged: false, holdDone: false })) };
+
+  // Persist swap so it sticks next session
+  const storage = getStorage();
+  if (!storage.swaps) storage.swaps = {};
+  const swapKey = (currentGoal || "athletic") + ":" + exId;
+  storage.swaps[swapKey] = swap.name;
+  saveStorage(storage);
+
   closeSwapModal();
   renderExercises();
+}
+
+function getPersistedSwapName(exId) {
+  const storage = getStorage();
+  if (!storage.swaps) return null;
+  const swapKey = (currentGoal || "athletic") + ":" + exId;
+  return storage.swaps[swapKey] || null;
 }
 
 function closeSwapModal() { document.getElementById("swap-modal").classList.remove("visible"); swapTarget = null; }
@@ -1803,7 +1856,7 @@ function renderDashboard() {
   if (weekTargetEl) weekTargetEl.textContent = " of " + goalDays + " sessions this week";
   const pipsEl = document.getElementById("dash-week-pips");
   pipsEl.innerHTML = "";
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < goalDays; i++) {
     const pip = document.createElement("div");
     pip.className = "week-day-pip" + (i < count ? " done" : "");
     pipsEl.appendChild(pip);
@@ -1813,7 +1866,9 @@ function renderDashboard() {
   const pbGrid = document.getElementById("dash-pb-grid");
   pbGrid.innerHTML = "";
 
-  PB_LIFTS.forEach(([liftId, liftName]) => {
+  const trackedLifts = getAllTrackedLifts(history);
+  const liftsToShow = trackedLifts.length > 0 ? trackedLifts.slice(0,12) : PB_LIFTS;
+  liftsToShow.forEach(function([liftId, liftName]) {
     let bestWeight = 0, bestVolume = 0, bestDate = null;
 
     history.forEach(session => {

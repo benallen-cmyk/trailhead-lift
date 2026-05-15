@@ -1,4 +1,4 @@
-const CACHE = 'trailhead-lift-v4';
+const CACHE = 'trailhead-lift-v5';
 const ASSETS = [
   '/trailhead-lift/',
   '/trailhead-lift/index.html',
@@ -9,9 +9,7 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
   self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS))
-  );
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', e => {

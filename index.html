@@ -1244,9 +1244,9 @@ function buildExCard(ex, ei, isFinisher) {
   const infoPanelHtml = instrData
     ? "<div class=\"info-panel\" id=\"info-panel-" + ex.id + "\">" +
       "<div class=\"info-panel-section\"><div class=\"info-panel-label\">Form Cues</div>" +
-      instrData.cues.map(function(c){ return "<div class=\"info-cue\">&#10003; " + c + "</div>"; }).join("") +
+      instrData.cues.map(function(c){ return "<div class=\"info-cue\">" + c + "</div>"; }).join("") +
       "</div><div class=\"info-panel-section\"><div class=\"info-panel-label\">Common Mistakes</div>" +
-      instrData.mistakes.map(function(m){ return "<div class=\"info-mistake\">&#10007; " + m + "</div>"; }).join("") +
+      instrData.mistakes.map(function(m){ return "<div class=\"info-mistake\">" + m + "</div>"; }).join("") +
       "</div></div>"
     : "";
 
@@ -1687,10 +1687,15 @@ const WARMUP_MESSAGES = {
 
 function showWarmupBanner(dayId) {
   const banner = document.getElementById("warmup-banner");
-  const msg = WARMUP_MESSAGES[dayId];
+  if (!banner) return;
+  const goal = currentGoal || "athletic";
+  const goalMsgs = WARMUP_MESSAGES[goal] || WARMUP_MESSAGES["athletic"];
+  const msg = goalMsgs ? (goalMsgs[dayId] || Object.values(goalMsgs)[0]) : null;
   if (!msg) { banner.style.display = "none"; return; }
-  document.getElementById("warmup-banner-title").textContent = msg.title;
-  document.getElementById("warmup-banner-sub").innerHTML = msg.sub;
+  const titleEl = document.getElementById("warmup-banner-title");
+  const subEl = document.getElementById("warmup-banner-sub");
+  if (titleEl) titleEl.textContent = msg.title;
+  if (subEl) subEl.innerHTML = msg.sub;
   banner.style.display = "flex";
 }
 
